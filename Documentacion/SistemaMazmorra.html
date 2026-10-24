@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Sistema de creacion procedural de mazmorra - Documentacion</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm 16mm 15mm; }
+
+  :root {
+    --ink: #16191f;
+    --muted: #5b6472;
+    --line: #d5dae2;
+    --accent: #1d4ed8;
+    --code-bg: #f4f6f9;
+    --head-bg: #eef2f8;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.4pt;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  /* ---------- Portada ---------- */
+  .cover {
+    border: 1px solid var(--line);
+    border-left: 6px solid var(--accent);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 22px;
+    background: #fbfcfe;
+  }
+  .cover h1 {
+    font-size: 21pt;
+    line-height: 1.2;
+    margin: 0 0 6px 0;
+    border: 0;
+    padding: 0;
+  }
+  .cover .sub {
+    font-size: 11pt;
+    color: var(--muted);
+    margin: 0 0 12px 0;
+  }
+  .cover dl {
+    display: grid;
+    grid-template-columns: 34mm 1fr;
+    gap: 2px 10px;
+    margin: 0;
+    font-size: 9.6pt;
+  }
+  .cover dt { color: var(--muted); }
+  .cover dd { margin: 0; }
+
+  /* ---------- Encabezados ---------- */
+  h1 {
+    font-size: 16pt;
+    margin: 0 0 10px 0;
+    padding-bottom: 5px;
+    border-bottom: 2px solid var(--accent);
+  }
+  h2 {
+    font-size: 13pt;
+    margin: 20px 0 8px 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--line);
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11.2pt;
+    margin: 15px 0 6px 0;
+    color: #1f2937;
+    page-break-after: avoid;
+  }
+  p { margin: 0 0 8px 0; }
+  ul, ol { margin: 0 0 9px 0; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+
+  /* ---------- Tablas ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6px 0 12px 0;
+    font-size: 9.4pt;
+    page-break-inside: auto;
+  }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  th {
+    background: var(--head-bg);
+    text-align: left;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    padding: 4px 7px;
+  }
+  td {
+    border: 1px solid var(--line);
+    padding: 4px 7px;
+    vertical-align: top;
+  }
+  td code, th code { background: none; padding: 0; }
+
+  /* ---------- Codigo ---------- */
+  code {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 9.2pt;
+    background: var(--code-bg);
+    border: 1px solid #e2e7ee;
+    border-radius: 3px;
+    padding: 0 3px;
+  }
+  pre {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 8.9pt;
+    line-height: 1.42;
+    background: var(--code-bg);
+    border: 1px solid #e2e7ee;
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 6px 0 12px 0;
+    white-space: pre-wrap;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 8.9pt; }
+
+  /* ---------- Avisos ---------- */
+  .note {
+    border: 1px solid #f0d9a8;
+    background: #fdf7e8;
+    border-left: 4px solid #d99a1a;
+    border-radius: 4px;
+    padding: 8px 11px;
+    margin: 8px 0 12px 0;
+    font-size: 9.7pt;
+    page-break-inside: avoid;
+  }
+  .note strong { color: #8a5a00; }
+
+  .diagram {
+    border: 1px solid var(--line);
+    background: #f7f9fc;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin: 8px 0 14px 0;
+    text-align: center;
+    font-size: 9.6pt;
+    page-break-inside: avoid;
+  }
+  .diagram code { background: none; border: 0; }
+
+  .pagebreak { page-break-before: always; }
+  .toc { font-size: 10pt; }
+  .toc li { margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Sistema de creación procedural de mazmorra</h1>
+  <p class="sub">Documentación técnica y guía de portabilidad a otro proyecto</p>
+  <dl>
+    <dt>Proyecto</dt><dd>ParcialMultijugador (Unity, carril URP)</dd>
+    <dt>Namespace</dt><dd><code>DungeonSystem</code></dd>
+    <dt>Carpeta raíz</dt><dd><code>Assets/Scripts/Dungeon/</code></dd>
+    <dt>Archivos</dt><dd>14 scripts + 1 script de editor + 1 ScriptableObject + 1 prefab + 4 materiales</dd>
+    <dt>Dependencias externas</dt><dd>2 puntos (salas superadas y jugador local)</dd>
+  </dl>
+</div>
+
+<h2>Índice</h2>
+<ol class="toc">
+  <li>Visión general: tres fases encadenadas</li>
+  <li>Inventario de scripts</li>
+  <li>Modelo de datos (<code>RoomNode</code>)</li>
+  <li>Generación del grid (<code>DungeonGrid</code>)</li>
+  <li>Construcción de la escena (<code>DungeonBuilder</code>)</li>
+  <li>Geometría del prefab de sala (20 × 20)</li>
+  <li>Base visual (<code>RoomVisualDatabase</code>)</li>
+  <li>Puertas y ocupación (<code>RoomController</code> + <code>DoorController</code>)</li>
+  <li>Cámara y minimapa</li>
+  <li>Determinismo</li>
+  <li>API pública útil</li>
+  <li>Qué necesitas para llevarlo a otro proyecto</li>
+</ol>
+
+<h1>1. Sistema de creación procedural de mazmorra</h1>
+
+<p><strong>Namespace:</strong> <code>DungeonSystem</code> · <strong>Carpeta raíz:</strong> <code>Assets/Scripts/Dungeon/</code> · <strong>Sin <code>.asmdef</code></strong> (todo cae en <code>Assembly-CSharp</code>).</p>
+
+<h2>1.1. Visión general: tres fases encadenadas</h2>
+
+<p><code>DungeonManager</code> es el punto de entrada y une las tres fases. <strong>No genera en <code>Start()</code></strong>: la generación la dispara quien abre la partida, con la semilla que decide el host.</p>
+
+<div class="diagram">
+<code>DungeonGrid</code> (datos) → <code>DungeonBuilder</code> (escena) → <code>DungeonManager</code> (presentación)<br>
+grid de salas &nbsp;·&nbsp; instancia prefabs &nbsp;·&nbsp; cámara + minimapa
+</div>
+
+<h2>1.2. Inventario de scripts</h2>
+
+<table>
+<thead>
+<tr><th style="width:33%">Ruta</th><th style="width:20%">Tipo</th><th>Responsabilidad</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DungeonManager.cs</code></td><td>MonoBehaviour</td><td>Punto de entrada. <code>GenerateFloor(seed)</code>, <code>ClearFloor()</code>, <code>GenerateNextFloor(seed)</code>, consultas grid↔mundo</td></tr>
+<tr><td><code>Core/DungeonGrid.cs</code></td><td>Clase pura</td><td>Algoritmo de generación del racimo de salas + salas especiales + asignación de jefe/tiendas</td></tr>
+<tr><td><code>Core/RoomNode.cs</code></td><td>Clase serializable</td><td>Celda de datos: coordenada, tipo, 4 conexiones, <code>sceneInstance</code>, estado de minimapa</td></tr>
+<tr><td><code>Build/DungeonBuilder.cs</code></td><td>MonoBehaviour</td><td>Instancia un prefab por celda, le aplica conexiones, material y obstáculos</td></tr>
+<tr><td><code>Build/RoomVisualDatabase.cs</code></td><td>ScriptableObject</td><td>Tabla máscara (0–15) → prefab(s) + material de suelo, con reserva obligatoria</td></tr>
+<tr><td><code>Build/RoomCameraFollow.cs</code></td><td>MonoBehaviour</td><td>Cámara del jugador local (lo sigue y lo apunta)</td></tr>
+<tr><td><code>Rooms/RoomController.cs</code></td><td>MonoBehaviour</td><td>Vive en cada sala: puertas, ocupación por trigger, registro de enemigos, superación</td></tr>
+<tr><td><code>Rooms/DoorController.cs</code></td><td>MonoBehaviour</td><td>Panel de puerta: abierto (collider off) / bloqueado (collider on + material)</td></tr>
+<tr><td><code>Rooms/EnemyMarker.cs</code></td><td>MonoBehaviour</td><td>Marca un enemigo del encuentro: <code>Die()</code> + evento <code>OnDeath</code></td></tr>
+<tr><td><code>Rooms/BossRoomController.cs</code></td><td>MonoBehaviour</td><td>Lógica de «sala de jefe» del devlog (viaje direccional al siguiente piso)</td></tr>
+<tr><td><code>Rooms/RoomObstacleSpawner.cs</code></td><td>MonoBehaviour</td><td>Adorno aleatorio de la sala (opcional)</td></tr>
+<tr><td><code>Rooms/RoomObstacleSpawnPoint.cs</code></td><td>MonoBehaviour</td><td>Marca dónde puede caer un obstáculo</td></tr>
+<tr><td><code>UI/MinimapController.cs</code></td><td>MonoBehaviour (uGUI)</td><td>Un icono por sala + reglas de visibilidad</td></tr>
+<tr><td><code>UI/MinimapRoomIcon.cs</code></td><td>MonoBehaviour (uGUI)</td><td>Opacidad y brillo de un icono sin perder el color de su tipo de sala</td></tr>
+</tbody>
+</table>
+
+<h2>1.3. Modelo de datos (<code>RoomNode</code>)</h2>
+
+<ul>
+  <li><code>RoomType</code>: <code>Start</code>, <code>Normal</code>, <code>Shop</code>, <code>Special</code>, <code>Boss</code>.</li>
+  <li><code>RoomDirection</code>: <code>Up</code>, <code>Down</code>, <code>Left</code>, <code>Right</code>. <strong>La Y del grid se proyecta sobre el eje Z del mundo.</strong></li>
+  <li>Máscara de conexión: <strong>Up = 1, Down = 2, Left = 4, Right = 8</strong> (0–15). Es la clave compartida por la base visual y el minimapa.</li>
+  <li><code>ConnectionCount</code>, <code>ConnectionMask</code>, <code>IsConnected(dir)</code>, <code>SingleConnectionDirection</code> (para salas de una sola conexión).</li>
+  <li><code>HasEncounter =&gt; type == Normal || type == Boss</code> — regla determinista: host y clientes llegan al mismo resultado sin replicarla.</li>
+  <li><code>sceneInstance</code> es <code>[NonSerialized]</code>: lo rellena el builder.</li>
+</ul>
+
+<h2>1.4. Generación del grid (<code>DungeonGrid.Generate</code>)</h2>
+
+<p>Pasos exactos del algoritmo:</p>
+
+<ol>
+  <li><strong>Inicio en el centro:</strong> se crea la sala inicial en <code>(0,0)</code> con <code>type = Start</code>.</li>
+  <li><strong>Bucle</strong> mientras <code>RoomList.Count &lt; roomCount</code>, con contador de seguridad <code>roomCount * 500</code>.</li>
+  <li><strong>Origen aleatorio:</strong> se elige <code>RoomList[rng.Next(RoomList.Count)]</code> — <strong>cualquier</strong> sala existente, no la última. Por eso el mapa crece como racimo y no como pasillo.</li>
+  <li><strong>Vecino aleatorio:</strong> una de las 4 direcciones; si la casilla ya está ocupada, se repite el intento.</li>
+  <li><strong><code>ComputeConnections()</code>:</strong> deriva las 4 booleanas comprobando las celdas vecinas.</li>
+  <li><strong><code>AssignSpecialRooms(specialRoomCount)</code>:</strong> las candidatas son las <code>Normal</code> con <strong>exactamente 1 conexión</strong>. Si no hay suficientes, <code>ForceSpecialRoom(strict: true)</code> crea una sala nueva junto a la menos conectada, donde la nueva quede con una sola entrada; si falla, reintenta en modo relajado (<code>neighbours &gt;= 1</code>). Si aun así no hay ninguna, degrada la <code>Normal</code> más lejana del centro.</li>
+  <li><strong><code>AssignBossAndShops()</code>:</strong> entre las especiales, la de mayor distancia Manhattan al centro pasa a <code>Boss</code> (desempate con <code>rng</code>) y <strong>todas las demás pasan a <code>Shop</code></strong>. Consecuencia: <code>RoomType.Special</code> no sobrevive al final de la generación.</li>
+  <li><strong><code>ComputeConnections()</code></strong> de nuevo, porque el asignador puede haber añadido salas.</li>
+</ol>
+
+<h2>1.5. Construcción de la escena (<code>DungeonBuilder.Build</code>)</h2>
+
+<p>Para cada <code>RoomNode</code> de la lista <strong>en orden de creación</strong> (no el diccionario, para que el consumo del <code>System.Random</code> sea idéntico en todas las máquinas):</p>
+
+<ol>
+  <li><code>worldPosition = (x * roomSize, 0, y * roomSize)</code>.</li>
+  <li><code>database.GetRoomPrefab(type, mask, rng)</code> → <code>Instantiate</code> bajo <code>dungeonRoot</code>.</li>
+  <li>Nombre: <code>Room_{x}_{y}_{type}</code>; se guarda en <code>node.sceneInstance</code>.</li>
+  <li><code>RoomController.Initialize(node)</code> y <code>SetFloorMaterial(database.GetFloorMaterial(mask))</code>.</li>
+  <li>Si hay <code>BossRoomController</code>: <code>SetEntryDirection(node.SingleConnectionDirection)</code>.</li>
+  <li>Si hay <code>RoomObstacleSpawner</code>: <code>Populate(rng)</code>.</li>
+</ol>
+
+<p><code>Clear()</code> destruye todos los hijos del root (<code>Destroy</code> en play mode, <code>DestroyImmediate</code> en el editor). Si <code>dungeonRoot</code> está vacío, busca o crea un objeto llamado <code>Dungeon</code>.</p>
+
+<h2>1.6. Geometría del prefab de sala (20 × 20)</h2>
+
+<p>Definida por las constantes de <code>DungeonSetup</code>: <code>RoomSize = 20</code>, <code>WallThickness = 0.5</code>, <code>WallHeight = 4</code>, <code>DoorWidth = 4</code>, <code>FloorThickness = 0.4</code>, <code>WallCenter = 9.75</code>.</p>
+
+<ul>
+  <li><strong>Suelo:</strong> losa de 20 × 20 con la cara superior <strong>exactamente en y = 0</strong>. Por eso <code>FloorSurfaceY = 0</code> y cualquier spawn es la mitad de la altura del collider.</li>
+  <li><strong>Paredes:</strong> de 9.5 a 10.0 en esta sala y de 10.0 a 10.5 en la vecina → cada sala tiene su propia losa en la frontera, sin solapes ni huecos.</li>
+  <li><strong>Cada lado</strong> lleva 2 tramos de pared (<code>Wall_{dir}_A/B</code>), una <strong>losa <code>Gate_{dir}</code></strong> que tapa el hueco cuando NO hay vecino, y una <strong>puerta <code>Door_{dir}</code></strong> que solo existe cuando sí lo hay.</li>
+  <li><strong>Trigger de ocupación:</strong> <code>BoxCollider isTrigger</code> en el <strong>root</strong> de la sala, centro <code>(0, 2, 0)</code>, tamaño <code>19 × 4 × 19</code> (no invade la celda vecina). El <code>RoomController</code> vive en ese mismo GameObject para recibir <code>OnTriggerEnter/Exit</code>.</li>
+  <li>4 hijos <code>Obstacle_0..3</code> a 5 unidades del centro, cada uno con <code>RoomObstacleSpawnPoint</code>.</li>
+</ul>
+
+<h2>1.7. Base visual (<code>RoomVisualDatabase</code>)</h2>
+
+<ul>
+  <li>Una entrada <code>ConnectionRoomSet</code> por máscara (0–15) con lista de variantes de prefab y material de suelo.</li>
+  <li>Salas con reglas propias: <code>startRoomPrefab</code>, <code>shopRoomPrefab</code>, <code>bossRoomPrefab</code> (con caída a la tabla si son <code>null</code>).</li>
+  <li><strong>Regla dura:</strong> si una máscara no tiene entrada, se usa <code>fallbackRoomPrefab</code>. El sistema anterior devolvía <code>null</code> y la sala desaparecía del piso.</li>
+  <li><code>ConfigureFromPrefab(prefab, material)</code> rellena las 16 máscaras con un mismo prefab (es lo que usa el editor).</li>
+  <li><code>RebuildLookup()</code> guarda solo la <strong>primera</strong> entrada por máscara, para que las duplicadas no queden muertas.</li>
+</ul>
+
+<h2>1.8. Puertas y ocupación (<code>RoomController</code> + <code>DoorController</code>)</h2>
+
+<ul>
+  <li><code>Initialize(node)</code> registra en <code>Registry[coord]</code>, aplica conexiones (activa <code>Gate</code> donde no hay vecino y <code>Door</code> donde sí), calcula <code>IsCleared = startsCleared || !HasEncounter || AuthoritySaysCleared(coord)</code> y llama a <code>UnlockDoors()</code>.</li>
+  <li><strong>Cada sala es dueña de sus 4 paneles:</strong> una frontera queda tapada mientras cualquiera de las dos salas que la comparten la tenga cerrada. No hay estado compartido, así que no puede haber interbloqueos.</li>
+  <li><code>DoorController.SetLocked(bool)</code>: <code>collider.enabled = locked</code> y cambio de material (abierto / cerrado, ambos emisivos).</li>
+  <li>Ocupación: <code>OnTriggerEnter</code> con <code>CompareTag("Player")</code> incrementa <code>_playersInside</code>, <strong>avisa por el evento <code>PlayerEntered</code></strong> y bloquea las puertas si <code>!IsCleared &amp;&amp; HasEncounter</code>. <code>OnTriggerExit</code> decrementa.</li>
+  <li>Enemigos: <code>RegisterEnemy(marker)</code> lo añade a <code>_enemies</code> y se suscribe a <code>OnDeath</code>; al morir se desuscribe y llama a <code>TryReportClear()</code>.</li>
+  <li><code>TryReportClear()</code>: solo si <code>_enemies.Count == 0</code>, <code>run.IsServer</code> y no se ha reportado antes → <code>ServerAddPoints(clearPoints)</code> + <code>ServerMarkRoomCleared(coord)</code>. <code>SetClearedFromNetwork()</code> abre las puertas en todos los peers.</li>
+  <li><strong>Red de seguridad en <code>Update()</code>:</strong> si hay jugadores dentro, la sala tiene encuentro, no está superada y quedan 0 enemigos → <code>TryReportClear()</code>. Evita salas encerradas para siempre cuando un enemigo se destruye sin pasar por <code>Die()</code>.</li>
+</ul>
+
+<h3>Poblado diferido por entrada (corrección ya verificada)</h3>
+
+<ul>
+  <li><code>PlayerEntered</code> es un <code>event Action&lt;RoomController&gt;</code> que <strong>se dispara cada vez</strong> que entra un jugador, de forma <strong>sincrónica</strong> dentro de <code>OnTriggerEnter</code>.</li>
+  <li><code>TryClaimEncounter()</code> devuelve <code>true</code> una única vez por sala (marca <code>EncounterPopulated</code>), así que varias entradas simultáneas o el spawn repartido no duplican enemigos.</li>
+  <li>El host engancha el evento en cada sala con encuentro y puebla al entrar; la sala de jefe la sigue poblando el gate del grupo.</li>
+</ul>
+
+<h2>1.9. Cámara y minimapa</h2>
+
+<ul>
+  <li><code>RoomCameraFollow</code>: <code>SmoothDamp</code> hacia <code>player.position + (0, 14, -8)</code> con <code>smoothTime = 0.25</code> y <code>LookRotation</code> hacia el jugador conservando la componente vertical. <code>GetCurrentRoomCoord()</code> convierte la posición del jugador en celda.</li>
+  <li><code>MinimapController</code>: un icono por sala en su coordenada × <code>iconSpacing</code>. Visitada = alfa completo; adyacente a una visitada = <code>adjacentAlpha</code> (0.35); el resto, invisible. La sala actual se resalta sumando brillo al RGB. Nunca lanza excepción si falta un asset.</li>
+</ul>
+
+<h2>1.10. Determinismo</h2>
+
+<p>Un <strong>único <code>System.Random(seed)</code></strong> recorre las tres fases: grid → construcción → adorno. Se recorre <code>RoomList</code> (orden de creación) y nunca el diccionario. Misma semilla = mismo piso en todas las máquinas. El poblado de enemigos por sala deriva su propio <code>System.Random</code> de <code>(Encode(coord), Seed)</code>, así que es estable con independencia del momento del spawn.</p>
+
+<h2>1.11. API pública útil</h2>
+
+<pre><code>// DungeonManager
+void GenerateFloor(int seed);
+void ClearFloor();
+void GenerateNextFloor(int seed);
+bool TryGetRoom(Vector2Int coord, out RoomNode node);
+RoomNode FindByType(RoomType type);
+RoomNode GetRoomAt(Vector3 worldPosition);
+Vector2Int WorldToGrid(Vector3 worldPosition);
+Vector3 GridToWorld(Vector2Int coord);
+IReadOnlyDictionary&lt;Vector2Int, RoomNode&gt; Rooms;
+float RoomSize; float FloorSurfaceY;
+event Action&lt;IReadOnlyDictionary&lt;Vector2Int, RoomNode&gt;&gt; FloorBuilt;
+
+// RoomController
+RoomNode Node; bool IsCleared; bool HasEncounter; bool EncounterPopulated;
+int AliveEnemyCount; int ClearPoints; Vector3 Center;
+static readonly Dictionary&lt;Vector2Int, RoomController&gt; Registry;
+void Initialize(RoomNode node);
+void RegisterEnemy(EnemyMarker enemy);
+bool TryClaimEncounter();
+void SetClearedFromNetwork();
+void LockDoors(); void UnlockDoors();
+event Action&lt;RoomController&gt; PlayerEntered;</code></pre>
+
+<div class="pagebreak"></div>
+
+<h1>2. Qué necesitas para llevarlo a otro proyecto</h1>
+
+<h2>2.1. Código — imprescindible (<code>Assets/Scripts/Dungeon/</code>, 14 archivos)</h2>
+
+<p>Cópialos manteniendo la estructura de carpetas (o cualquiera; lo que importa es el namespace):</p>
+
+<pre><code>Scripts/Dungeon/DungeonManager.cs
+Scripts/Dungeon/Core/DungeonGrid.cs
+Scripts/Dungeon/Core/RoomNode.cs
+Scripts/Dungeon/Build/DungeonBuilder.cs
+Scripts/Dungeon/Build/RoomVisualDatabase.cs
+Scripts/Dungeon/Build/RoomCameraFollow.cs
+Scripts/Dungeon/Rooms/RoomController.cs
+Scripts/Dungeon/Rooms/DoorController.cs
+Scripts/Dungeon/Rooms/EnemyMarker.cs
+Scripts/Dungeon/Rooms/BossRoomController.cs
+Scripts/Dungeon/Rooms/RoomObstacleSpawner.cs
+Scripts/Dungeon/Rooms/RoomObstacleSpawnPoint.cs
+Scripts/Dungeon/UI/MinimapController.cs
+Scripts/Dungeon/UI/MinimapRoomIcon.cs</code></pre>
+
+<p>Si el proyecto destino usa <code>.asmdef</code>, crea un ensamblado que contenga exactamente estos 14 archivos: el sistema no depende de ningún otro assembly propio.</p>
+
+<h2>2.2. Dependencias de código que hay que resolver (2 puntos, no vienen en el núcleo)</h2>
+
+<table>
+<thead>
+<tr><th style="width:26%">Archivo</th><th style="width:17%">Punto</th><th style="width:29%">Lo que usa</th><th>Qué hacer</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>Rooms/RoomController.cs</code></td>
+  <td><code>AuthoritySaysCleared</code></td>
+  <td><code>ProtocolExecution.RunController</code> → <code>.Instance</code>, <code>.IsSpawned</code>, <code>.ClearedRooms</code>, <code>Encode(coord)</code></td>
+  <td>Sustituirlo por tu propia persistencia de salas superadas, o devolver <code>false</code> si no hay partidas persistentes</td>
+</tr>
+<tr>
+  <td><code>Rooms/BossRoomController.cs</code></td>
+  <td><code>FindLocalPlayer</code></td>
+  <td><code>ProtocolExecution.NetPlayer.All</code> + <code>.IsOwner</code></td>
+  <td>Cambiarlo por <code>FindFirstObjectByType&lt;...&gt;()</code> de tu jugador, o por <code>Camera.main.transform</code></td>
+</tr>
+</tbody>
+</table>
+
+<p>Son las <strong>únicas</strong> líneas que salen del namespace. Todo lo demás (<code>DungeonManager</code>, <code>DungeonGrid</code>, <code>DungeonBuilder</code>, <code>RoomVisualDatabase</code>, <code>DoorController</code>, <code>EnemyMarker</code>, <code>RoomObstacle*</code>, <code>Minimap*</code>, <code>RoomCameraFollow</code>) es autocontenido.</p>
+
+<p><strong>Opcional para gameplay completo:</strong> <code>Assets/Scripts/Multiplayer/RunBootstrapper.cs</code>. Es el que genera el piso con la semilla, reparte los spawns, puebla las salas y genera el jefe. Sin él tendrás el mapa con puertas, pero <strong>sin jugadores colocados ni enemigos</strong>: tendrías que llamar tú a <code>GenerateFloor(seed)</code> y a <code>RoomController.RegisterEnemy(...)</code>. Ten en cuenta que arrastra <code>NetPlayer</code>, <code>NetEnemy</code>, <code>RunController</code> y Unity Netcode.</p>
+
+<h2>2.3. Assets — imprescindibles</h2>
+
+<table>
+<thead>
+<tr><th style="width:33%">Asset</th><th style="width:26%">Ruta</th><th>Por qué es necesario</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>Base visual</td>
+  <td><code>Assets/Dungeon/RoomVisualDatabase.asset</code></td>
+  <td>Sin ella, <code>DungeonBuilder</code> lanza «Falta la referencia a RoomVisualDatabase» y no construye nada. Alternativa: crear una nueva con clic derecho → <strong>Create → DungeonSystem → Room Visual Database</strong></td>
+</tr>
+<tr>
+  <td>Prefab de sala</td>
+  <td><code>Assets/Prefabs/Dungeon/DungeonRoom.prefab</code></td>
+  <td>Es el único prefab de la base visual. <strong>Debe tener <code>RoomController</code></strong>, o el builder descarta la sala con error</td>
+</tr>
+<tr>
+  <td>Materiales</td>
+  <td><code>Assets/Materials/</code>: <code>Dungeon_Floor.mat</code>, <code>Dungeon_Wall.mat</code>, <code>Dungeon_DoorOpen.mat</code>, <code>Dungeon_DoorClosed.mat</code></td>
+  <td>Suelo, paredes y los dos estados de puerta</td>
+</tr>
+<tr>
+  <td>Script de editor</td>
+  <td><code>Assets/Editor/DungeonSetup.cs</code></td>
+  <td>Menú <strong>Protocol → Configurar sistema de mazmorra</strong>. Es idempotente y regenera prefab + base visual + cableado de escena. Es la forma fiable de recrear todo en el proyecto destino sin copiar GUIDs</td>
+</tr>
+</tbody>
+</table>
+
+<div class="note">
+<strong>Aviso sobre el <code>.asset</code>:</strong> guarda sus referencias por GUID. Si copias solo el <code>.asset</code> sin el prefab y sin <code>Dungeon_Floor.mat</code>, llega vacío. Lo más seguro es copiar los 14 scripts más <code>DungeonSetup.cs</code> y ejecutar el menú en el proyecto destino: crea los 4 materiales, el prefab con la geometría correcta y la base visual con las 16 máscaras.
+</div>
+
+<h2>2.4. Escena — 5 objetos obligatorios</h2>
+
+<table>
+<thead>
+<tr><th style="width:22%">Objeto</th><th style="width:24%">Componentes</th><th>Cableado</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>DungeonManager</code></td>
+  <td><code>DungeonManager</code></td>
+  <td><code>builder</code>, <code>minimap</code>, <code>cameraFollow</code>; <code>generateOnStart = false</code>, <code>roomCount = 16</code>, <code>specialRoomCount = 2</code> (≥1, o no hay sala de jefe)</td>
+</tr>
+<tr>
+  <td><code>DungeonBuilder</code></td>
+  <td><code>DungeonBuilder</code></td>
+  <td><code>database</code> = base visual, <code>roomSize = 20</code>, <code>dungeonRoot</code> = objeto <code>Dungeon</code></td>
+</tr>
+<tr>
+  <td><code>Dungeon</code></td>
+  <td>Transform</td>
+  <td>Padre de las salas instanciadas</td>
+</tr>
+<tr>
+  <td><code>Minimap</code></td>
+  <td><code>MinimapController</code></td>
+  <td>Necesita estar bajo un <strong>Canvas</strong> (es uGUI: crea <code>Image</code>). <code>mapRoot</code>, <code>iconPrefab</code> y <code>connectionIcons</code> pueden quedar vacíos</td>
+</tr>
+<tr>
+  <td><code>Main Camera</code></td>
+  <td><code>RoomCameraFollow</code></td>
+  <td><code>roomSize = 20</code>; <code>player</code> lo asigna quien spawnee al jugador, o se asigna por código</td>
+</tr>
+</tbody>
+</table>
+
+<h2>2.5. Requisitos del proyecto destino</h2>
+
+<ul>
+  <li><strong>Física 3D</strong> (<code>UnityEngine.Physics</code>): el trigger de ocupación es un <code>BoxCollider</code> trigger.</li>
+  <li><strong>El jugador necesita un <code>Rigidbody</code>.</strong> Sin Rigidbody no se disparan <code>OnTriggerEnter/Exit</code> y, por tanto, no hay bloqueo de puertas ni poblado de salas. En este proyecto el <code>Player</code> lleva un Rigidbody kinematic con interpolación.</li>
+  <li><strong>Tag <code>Player</code></strong> en el GameObject que lleva el collider del jugador (aquí es el hijo <code>Player</code>, capa 8, dentro de <code>Prefabs/Player.prefab</code>; el root está <code>Untagged</code>). Si el tag no está, <code>CompareTag("Player")</code> es falso y todo el sistema de ocupación queda muerto en silencio.</li>
+  <li><strong>uGUI (<code>com.unity.ugui</code>)</strong> para el minimapa. Si no lo quieres, borra <code>UI/MinimapController.cs</code> y <code>UI/MinimapRoomIcon.cs</code> y deja <code>minimap = null</code>.</li>
+  <li><strong>Shader de los materiales:</strong> <code>DungeonSetup</code> usa <code>Universal Render Pipeline/Lit</code> y cae a <code>Standard</code> si URP no está. Deja que el menú recree los materiales en lugar de copiarlos.</li>
+  <li><strong>Capa <code>Combatants</code>:</strong> <strong>no</strong> la necesita el sistema de mazmorra. Solo la usan <code>NetPlayer</code> y <code>NetEnemy</code> para su <code>wallMask</code>.</li>
+</ul>
+
+<h2>2.6. Lo que NO necesitas</h2>
+
+<p><code>NetEnemy</code>, <code>NetPlayer</code>, <code>NetProjectile</code>, <code>RunController</code>, <code>GameUI</code>, <code>ProtocolSetup</code>, la capa <code>Combatants</code>, los materiales <code>Cyber_*</code> y los assets de sprites del minimapa. Ninguno forma parte de la generación procedural.</p>
+
+<h2>2.7. Errores que verás primero al portarlo</h2>
+
+<div class="note">
+<strong>Sala que desaparece del piso.</strong> Si la base visual no tiene entrada para una máscara y <code>fallbackRoomPrefab</code> es <code>null</code>, el builder imprime «No hay prefab para ...; la sala queda vacía» y esa sala no se construye.
+</div>
+
+<div class="note">
+<strong>Piso sin jefe.</strong> Si <code>specialRoomCount</code> es menor que 1, no hay ninguna sala especial y <code>AssignSpecialRooms</code> no tiene de dónde elegir <code>RoomType.Boss</code>.
+</div>
+
+</body>
+</html>
