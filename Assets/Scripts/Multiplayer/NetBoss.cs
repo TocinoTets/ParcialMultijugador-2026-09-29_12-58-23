@@ -36,6 +36,9 @@ namespace ProtocolExecution
         [Tooltip("Radio de impacto contra el que se comprueban los disparos de los jugadores.")]
         [SerializeField] private float hitRadius = 1.8f;
 
+        [Tooltip("Distancia maxima (m, por eje) que puede alejarse del centro de su sala. Salas de 20 m => 7 deja margen a las paredes.")]
+        [SerializeField] private float leashHalfExtent = 7f;
+
         public readonly NetworkVariable<float> Health = new NetworkVariable<float>(
             100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
@@ -61,6 +64,7 @@ namespace ProtocolExecution
         private Vector3 _interpPosition;
         private float _interpYaw;
         private bool _defeatAnnounced;
+        private Vector3 _home;
 
         public bool IsAlive => Health.Value > 0f;
         public float HitRadius => hitRadius;
@@ -92,6 +96,8 @@ namespace ProtocolExecution
                     RunController.Instance.ServerNotifyBossSpawned(maxHealth);
                 }
 
+                // Aparece en el centro de la sala de jefe (RunBootstrapper.SpawnBoss).
+                _home = transform.position;
                 NetPosition.Value = transform.position;
             }
         }
@@ -103,6 +109,7 @@ namespace ProtocolExecution
 
         private void Update()
         {
+            // [RED] La IA corre solo en el host; los clientes interpolan NetPosition.
             if (IsServer && IsAlive) UpdateServerAI();
             else if (!IsServer) UpdateClientInterpolation();
 
@@ -133,6 +140,12 @@ namespace ProtocolExecution
 
             if (movement.sqrMagnitude > 0.001f)
                 transform.position += movement.normalized * moveSpeed * Time.deltaTime;
+
+            // No tiene Rigidbody ni chequeo de paredes: se lo ata al centro de su sala.
+            Vector3 p = transform.position;
+            p.x = Mathf.Clamp(p.x, _home.x - leashHalfExtent, _home.x + leashHalfExtent);
+            p.z = Mathf.Clamp(p.z, _home.z - leashHalfExtent, _home.z + leashHalfExtent);
+            transform.position = p;
 
             if (Random.value < 0.01f) _strafeDirection *= -1f;
 
@@ -280,6 +293,10 @@ namespace ProtocolExecution
 
             // §2: resolucion de la partida. La victoria la determina el host.
             run.ServerEndRun(true);
+
+            // Avisa a la sala de jefe (igual que NetEnemy) para que la de por superada.
+            var marker = GetComponent<DungeonSystem.EnemyMarker>();
+            if (marker != null) marker.Die();
 
             var networkObject = GetComponent<NetworkObject>();
             if (networkObject != null && networkObject.IsSpawned) networkObject.Despawn(true);

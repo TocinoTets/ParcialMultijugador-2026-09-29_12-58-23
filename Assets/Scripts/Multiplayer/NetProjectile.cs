@@ -52,10 +52,18 @@ namespace ProtocolExecution
         {
             _interpPosition = transform.position;
 
-            if (IsServer) _netPosition.Value = transform.position;
+            if (IsServer)
+            {
+                _direction.Value = _launchDirection;
+                _team.Value = (int)_launchTeam;
+                _netPosition.Value = transform.position;
+            }
 
             ApplyVisualStyle();
         }
+
+        private Vector3 _launchDirection = Vector3.forward;
+        private Team _launchTeam;
 
         /// <summary>Configura y publica el proyectil. Solo se llama en el host.</summary>
         public void ServerLaunch(Vector3 direction, float damage, float speed, float range, Team team, ulong ownerClientId)
@@ -65,9 +73,9 @@ namespace ProtocolExecution
             _range = range;
             _ownerClientId = ownerClientId;
 
-            _direction.Value = direction.normalized;
-            _team.Value = (int)team;
-            _netPosition.Value = transform.position;
+            // Las NetworkVariables se escriben en OnNetworkSpawn: antes de Spawn() NGO avisa por consola.
+            _launchDirection = direction.normalized;
+            _launchTeam = team;
 
             transform.rotation = Quaternion.LookRotation(direction);
 
@@ -77,6 +85,7 @@ namespace ProtocolExecution
 
         private void Update()
         {
+            // [RED] Movimiento e impactos se resuelven en el host; el cliente solo interpola.
             if (IsServer) UpdateServer();
             else UpdateClient();
         }

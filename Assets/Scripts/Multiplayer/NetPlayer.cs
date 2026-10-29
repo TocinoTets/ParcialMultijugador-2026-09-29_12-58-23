@@ -12,23 +12,15 @@ namespace ProtocolExecution
     /// <summary>
     /// Jugador de red.
     ///
-    /// Implementa las tecnicas pedidas en §4.5:
+    /// [RED] Movimiento con autoridad del dueno: cada jugador se mueve en su
+    /// propia maquina y publica su posicion en <see cref="NetPosition"/>. El
+    /// host NO re-simula ni corrige ese movimiento (no se chequean los paquetes
+    /// de input), asi no hay rollbacks que se sientan como lag. Los demas
+    /// peers interpolan hacia la ultima posicion recibida.
     ///
-    ///  - Client-side prediction: el dueno del objeto aplica su propio input de
-    ///    inmediato (movimiento, dash y disparo) sin esperar al host.
-    ///  - Reconciliacion: el host aplica el mismo input sobre su copia y responde
-    ///    con (posicion, tick). El cliente compara su posicion predicha para ese
-    ///    tick y solo corrige si el error supera <see cref="reconcileThreshold"/>,
-    ///    tal como pide el documento ("solo se fuerza una correccion de estado
-    ///    cuando la diferencia afecta el resultado").
-    ///  - Rollback + replay: cuando corrige, reposiciona y re-simula los inputs
-    ///    pendientes para no perder los ultimos frames.
-    ///  - Interpolacion: los jugadores remotos se interpolan hacia la ultima
-    ///    posicion autoritativa en vez de saltar.
-    ///
-    /// El movimiento es cinematico y sin estado (posicion + input => nueva
-    /// posicion), a proposito: es lo que hace que el replay en el cliente
-    /// reproduzca exactamente lo que hizo el host.
+    /// Lo que si decide el host: disparos (<see cref="RequestFireServerRpc"/>),
+    /// dano, vida, caidas y teletransportes. El juego es cooperativo, asi que
+    /// confiar en la posicion del cliente no da ventaja competitiva (§4.4).
     /// </summary>
     public class NetPlayer : NetworkBehaviour
     {
@@ -44,13 +36,6 @@ namespace ProtocolExecution
         [SerializeField] private float radius = 0.45f;
         [SerializeField] private float dashDistance = 4.5f;
         [SerializeField] private LayerMask wallMask = ~0;
-
-        [Header("Reconciliacion (§4.5)")]
-        [Tooltip("Error de posicion (m) a partir del cual se fuerza el rollback.")]
-        [SerializeField] private float reconcileThreshold = 0.18f;
-
-        [Tooltip("Cantidad de inputs que se conservan para poder re-simular.")]
-        [SerializeField] private int inputHistorySize = 128;
 
         [Header("Combate")]
         [SerializeField] private float downedDuration = 10f;
@@ -102,34 +87,22 @@ namespace ProtocolExecution
         public readonly NetworkVariable<int> Deaths = new NetworkVariable<int>(
             0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
-        /// <summary>Posicion autoritativa del host. La consumen la reconciliacion y la interpolacion.</summary>
+        /// <summary>[RED] Posicion que publica el dueno cada frame; NGO la envia a la tasa de tick (30 Hz).</summary>
         public readonly NetworkVariable<Vector3> NetPosition = new NetworkVariable<Vector3>(
-            Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+            Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
         public readonly NetworkVariable<float> NetYaw = new NetworkVariable<float>(
-            0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+            0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
         // ---------------- Estado local ----------------
 
-        private struct InputState
-        {
-            public uint tick;
-            public Vector3 move;
-            public float yaw;
-            public bool dash;
-            public bool fire;
-            public float dt;
-            public Vector3 predictedPosition;
-        }
-
-        private readonly List<InputState> _history = new List<InputState>();
-        private uint _tick;
         private float _clientFireCooldown;
         private float _serverFireCooldown;
         private float _dashCooldownRemaining;
         private float _downedTimer;
         private Vector3 _interpPosition;
         private float _interpYaw;
+        private float _teleportHoldUntil;
 
         public bool IsAlive => !IsDowned.Value;
         public string DisplayName => PlayerName.Value.ToString();
@@ -167,22 +140,14 @@ namespace ProtocolExecution
                 BonusDamagePercent.Value = MetaProgression.BonusDamagePercent;
                 BonusSpeedPercent.Value = MetaProgression.BonusSpeedPercent;
                 DamageReduction.Value = MetaProgression.DamageReduction;
-            }
 
-            Health.OnValueChanged += HandleHealthChanged;
+                PublishPosition(transform.eulerAngles.y);
+            }
         }
 
         public override void OnNetworkDespawn()
         {
             All.Remove(this);
-            Health.OnValueChanged -= HandleHealthChanged;
-        }
-
-        private void HandleHealthChanged(float previous, float current)
-        {
-            // El dano recibido no se predice: es un evento raro y el cliente
-            // debe ver el valor del host, no el suyo.
-            if (IsOwner) _history.Clear();
         }
 
         // ---------------- Ciclo principal ----------------
@@ -192,53 +157,31 @@ namespace ProtocolExecution
             RunController run = RunController.Instance;
             bool runActive = run != null && run.CurrentPhase == RunPhase.Playing;
 
-            if (runActive && !IsDowned.Value)
-            {
-                if (IsOwner) UpdateOwnerInput();
+            if (runActive && !IsDowned.Value && IsOwner) UpdateOwnerInput();
 
-                if (IsServer) UpdateServerAuthority();
-            }
-
-            if (!IsServer && !IsOwner) UpdateRemoteInterpolation();
-            else if (IsServer && !IsOwner) SyncAuthoritativeTransform();
+            // Host incluido: todo jugador ajeno se dibuja interpolando lo que publico su dueno.
+            if (!IsOwner) UpdateRemoteInterpolation();
 
             if (IsServer && IsDowned.Value) UpdateServerDowned();
 
             UpdateBodyColor();
         }
 
-        // ---------------- Dueno del objeto: prediccion ----------------
+        // ---------------- Dueno del objeto: movimiento local ----------------
 
         private void UpdateOwnerInput()
         {
             ReadInput(out Vector3 move, out float yaw, out bool dashRequested, out bool fireRequested);
 
-            _tick++;
-
-            // Prediccion: se aplica ya, sin esperar confirmacion del host.
-            ApplyMovement(move, yaw, dashRequested, Time.deltaTime, out Vector3 newPosition);
+            ApplyMovement(move, dashRequested, Time.deltaTime, out Vector3 newPosition);
             transform.position = newPosition;
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
-            _history.Add(new InputState
-            {
-                tick = _tick,
-                move = move,
-                yaw = yaw,
-                dash = dashRequested,
-                fire = fireRequested,
-                dt = Time.deltaTime,
-                predictedPosition = newPosition
-            });
-
-            if (_history.Count > inputHistorySize) _history.RemoveAt(0);
+            // [RED] Se manda la posicion tal cual: nadie la re-simula ni la corrige.
+            PublishPosition(yaw);
 
             if (_dashCooldownRemaining > 0f) _dashCooldownRemaining -= Time.deltaTime;
             if (_clientFireCooldown > 0f) _clientFireCooldown -= Time.deltaTime;
-
-            // En el host el movimiento local ya es el autoritativo: enviarse el
-            // RPC a si mismo lo aplicaria dos veces (doble velocidad).
-            if (!IsServer) SubmitInputServerRpc(move, yaw, dashRequested, Time.deltaTime, _tick);
 
             // §4.5: el disparo se resuelve en el host, pero el feedback visual y
             // sonoro se genera localmente para que se sienta inmediato.
@@ -250,25 +193,16 @@ namespace ProtocolExecution
             }
         }
 
-        /// <summary>
-        /// Movimiento sin estado: la misma entrada produce la misma salida en el
-        /// host y en el cliente, que es lo que hace posible el rollback + replay.
-        /// </summary>
-        private void ApplyMovement(Vector3 move, float yaw, bool dash, float dt, out Vector3 newPosition,
-            bool isReplay = false)
+        private void ApplyMovement(Vector3 move, bool dash, float dt, out Vector3 newPosition)
         {
             Vector3 direction = move.sqrMagnitude > 0.0001f ? move.normalized : Vector3.zero;
-
-            // Durante el replay el dash ya venia validado cuando se envio el input,
-            // asi que se reproduce tal cual en vez de volver a comprobar el cooldown.
-            // Si no, la re-simulacion perderia el dash y divergiria del host.
-            bool dashAllowed = direction != Vector3.zero && (isReplay || _dashCooldownRemaining <= 0f);
+            bool dashAllowed = direction != Vector3.zero && _dashCooldownRemaining <= 0f;
 
             Vector3 displacement;
             if (dash && dashAllowed)
             {
                 displacement = direction * dashDistance;
-                if (!isReplay) _dashCooldownRemaining = Character.dashCooldown;
+                _dashCooldownRemaining = Character.dashCooldown;
             }
             else
             {
@@ -302,89 +236,21 @@ namespace ProtocolExecution
             return displacement;
         }
 
-        // ---------------- Host: simulacion autoritativa ----------------
-
-        [ServerRpc]
-        private void SubmitInputServerRpc(Vector3 move, float yaw, bool dash, float dt, uint tick,
-            ServerRpcParams rpcParams = default)
-        {
-            ApplyMovement(move, yaw, dash, dt, out Vector3 newPosition);
-            transform.position = newPosition;
-            transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-
-            if (_dashCooldownRemaining > 0f) _dashCooldownRemaining -= dt;
-
-            PublishAuthoritativeState(yaw);
-
-            // Solo el dueno necesita la correccion: los demas interpolan.
-            ulong sender = rpcParams.Receive.SenderClientId;
-            if (sender != NetworkManager.ServerClientId)
-            {
-                SendCorrectionClientRpc(newPosition, yaw, tick,
-                    new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { sender } } });
-            }
-        }
-
-        private void UpdateServerAuthority()
-        {
-            // El host tambien publica su propio estado para los clientes remotos.
-            if (IsOwner) PublishAuthoritativeState(transform.eulerAngles.y);
-        }
-
-        private void PublishAuthoritativeState(float yaw)
+        private void PublishPosition(float yaw)
         {
             NetPosition.Value = transform.position;
             NetYaw.Value = yaw;
         }
 
-        private void SyncAuthoritativeTransform()
-        {
-            transform.position = NetPosition.Value;
-            transform.rotation = Quaternion.Euler(0f, NetYaw.Value, 0f);
-        }
-
-        [ClientRpc]
-        private void SendCorrectionClientRpc(Vector3 authoritativePosition, float yaw, uint tick,
-            ClientRpcParams rpcParams = default)
-        {
-            if (!IsOwner || IsServer) return;
-
-            int index = _history.FindIndex(h => h.tick == tick);
-            if (index < 0) return;
-
-            float error = Vector3.Distance(_history[index].predictedPosition, authoritativePosition);
-
-            // §4.5: minimizar correcciones visibles. Si el error es bajo, el
-            // estado predicho ya es suficientemente bueno y no se toca nada.
-            if (error < reconcileThreshold) return;
-
-            RollbackAndReplay(authoritativePosition, yaw, index);
-        }
-
-        /// <summary>Rollback + replay de los inputs que el host todavia no habia confirmado.</summary>
-        private void RollbackAndReplay(Vector3 authoritativePosition, float yaw, int confirmedIndex)
-        {
-            transform.position = authoritativePosition;
-            transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            _interpPosition = authoritativePosition;
-
-            for (int i = confirmedIndex + 1; i < _history.Count; i++)
-            {
-                InputState state = _history[i];
-                ApplyMovement(state.move, state.yaw, state.dash, state.dt, out Vector3 replayPosition, true);
-
-                state.predictedPosition = replayPosition;
-                _history[i] = state;
-                transform.position = replayPosition;
-            }
-        }
-
-        // ---------------- Clientes remotos: interpolacion ----------------
+        // ---------------- Jugadores ajenos: interpolacion ----------------
 
         private void UpdateRemoteInterpolation()
         {
-            // §4.5: interpolacion entre estados del host para que el jitter no
-            // produzca saltos bruscos.
+            // Tras un teletransporte la NetPosition vieja sigue llegando hasta que
+            // el dueno publica la nueva: se ignora un momento para no volver atras.
+            if (Time.time < _teleportHoldUntil) return;
+
+            // [RED] Interpolacion: suaviza los saltos entre paquetes de 30 Hz.
             const float smoothing = 16f;
             float t = 1f - Mathf.Exp(-smoothing * Time.deltaTime);
 
@@ -400,6 +266,7 @@ namespace ProtocolExecution
         [ServerRpc]
         private void RequestFireServerRpc(Vector3 origin, Vector3 direction, ServerRpcParams rpcParams = default)
         {
+            // [RED] El disparo si lo valida el host (caido, cadencia) y es quien crea el proyectil.
             if (IsDowned.Value) return;
 
             float interval = 1f / Mathf.Max(0.01f, Character.fireRate);
@@ -579,12 +446,7 @@ namespace ProtocolExecution
         {
             if (!IsServer) return;
 
-            // Se actualiza tambien el estado autoritativo: si no, el host volveria
-            // a poner al jugador en su NetPosition vieja y lo reconciliaria hacia atras.
-            transform.position = position;
-            transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            PublishAuthoritativeState(yaw);
-
+            // [RED] La posicion es del dueno, asi que el host le pide que se mueva.
             TeleportClientRpc(position, yaw);
         }
 
@@ -595,7 +457,9 @@ namespace ProtocolExecution
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             _interpPosition = position;
             _interpYaw = yaw;
-            _history.Clear();
+
+            if (IsOwner) PublishPosition(yaw);
+            else _teleportHoldUntil = Time.time + 0.5f;
         }
 
         // ---------------- Entrada ----------------

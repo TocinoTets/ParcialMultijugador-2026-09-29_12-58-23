@@ -35,6 +35,9 @@ public static class ProtocolSetup
     [MenuItem("Protocol Execution/Configurar escena jugable")]
     public static void Configure()
     {
+        // Configura la escena: en Play mode Unity no deja marcarla como modificada.
+        if (EditorApplication.isPlaying) return;
+
         int combatantsLayer = EnsureLayer(CombatantsLayerName);
         if (combatantsLayer < 0)
         {

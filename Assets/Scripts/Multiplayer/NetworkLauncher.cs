@@ -9,6 +9,18 @@ namespace ProtocolExecution
     /// <summary>
     /// Punto de entrada de red para la topologia Cliente/Host (§4.4).
     ///
+    /// INDICE DEL MULTIJUGADOR (buscar "[RED]" con Ctrl+F para ir a cada punto):
+    ///  - Crear / unirse / aprobar conexiones ........ NetworkLauncher (este archivo)
+    ///  - Estado compartido de la partida y semilla .. RunController
+    ///  - Movimiento: cada jugador manda su posicion
+    ///    directo, sin chequeo de paquetes (menos lag) NetPlayer (UpdateOwnerInput)
+    ///  - Disparo y dano validados en el host ........ NetPlayer (RequestFireServerRpc), NetProjectile
+    ///  - IA de enemigos y jefe solo en el host;
+    ///    los clientes interpolan .................. NetEnemy, NetBoss
+    ///  - Misma mazmorra en todos, poblado de salas,
+    ///    reunir al grupo en una sala y jefe ......... RunBootstrapper
+    ///  - Salas superadas (puertas y piso violeta) ... RoomController + RunController.ClearedRooms
+    ///
     /// Un jugador arranca como host (servidor + cliente) y los demas se
     /// conectan a su direccion. La autoridad del estado compartido
     /// (mazmorra, enemigos, jefe, vida y puntos) vive en el host.
@@ -104,6 +116,7 @@ namespace ProtocolExecution
         /// </summary>
         private void ApprovalCheck(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
         {
+            // [RED] El host decide quien entra: version, partida en curso y cupo de 3.
             string clientVersion = string.Empty;
             if (request.Payload != null && request.Payload.Length > 0)
             {
@@ -145,6 +158,7 @@ namespace ProtocolExecution
 
         // ---------------- Arranque / union ----------------
 
+        /// <summary>[RED] Arranca como host (servidor + jugador) en el puerto configurado.</summary>
         public bool Host()
         {
             if (networkManager == null) return false;
@@ -158,6 +172,7 @@ namespace ProtocolExecution
             return started;
         }
 
+        /// <summary>[RED] Se conecta como cliente a la IP del host (LAN, sin Relay).</summary>
         public bool Join(string address)
         {
             if (networkManager == null) return false;

@@ -95,6 +95,24 @@ namespace DungeonSystem
             IsCleared = startsCleared || !HasEncounter || AuthoritySaysCleared(node.gridPosition);
 
             UnlockDoors();
+            if (HasEncounter && IsCleared) MarkFloorCompleted();
+        }
+
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+
+        /// <summary>
+        /// Tiñe el piso de violeta en las salas con encuentro ya superadas, para
+        /// saber cuales se completaron. Se usa un MaterialPropertyBlock para no
+        /// modificar el material compartido por todas las salas.
+        /// </summary>
+        private void MarkFloorCompleted()
+        {
+            if (floorRenderer == null) return;
+
+            var block = new MaterialPropertyBlock();
+            floorRenderer.GetPropertyBlock(block);
+            block.SetColor(BaseColorId, new Color(0.30f, 0.14f, 0.45f));
+            floorRenderer.SetPropertyBlock(block);
         }
 
         private void OnDestroy()
@@ -185,7 +203,9 @@ namespace DungeonSystem
         {
             // 2. Condición de desbloqueo: no quedan enemigos. Solo el host puede
             //    declarar la sala superada, así que fuera del host no hace nada.
-            if (_enemies.Count > 0) return;
+            // Una sala vacia porque todavia no se poblo (p. ej. la de jefe esperando
+            // al grupo) no esta superada.
+            if (_enemies.Count > 0 || !EncounterPopulated) return;
 
             RunController run = RunController.Instance;
             if (run == null || !run.IsServer) return;
@@ -197,11 +217,12 @@ namespace DungeonSystem
             run.ServerMarkRoomCleared(Node.gridPosition);
         }
 
-        /// <summary>El host confirmó que el equipo superó esta sala.</summary>
+        /// <summary>[RED] El host confirmó (via RunController.ClearedRooms) que el equipo superó esta sala.</summary>
         public void SetClearedFromNetwork()
         {
             IsCleared = true;
             UnlockDoors();
+            MarkFloorCompleted();
         }
 
         // ---------------- Ocupación (1-3 jugadores) ----------------
