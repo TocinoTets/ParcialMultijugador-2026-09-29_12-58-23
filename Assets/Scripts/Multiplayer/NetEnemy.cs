@@ -60,15 +60,16 @@ namespace ProtocolExecution
             if (marker == null) marker = GetComponent<DungeonSystem.EnemyMarker>();
         }
 
+        private float _initialHealth = 10f;
+
         /// <summary>Configura al enemigo antes de publicarlo. Solo en el host.</summary>
         public void ServerInitialize(float maxHealth, float damage, float speed, int points)
         {
-            MaxHealth.Value = maxHealth;
-            Health.Value = maxHealth;
+            // Las NetworkVariables se escriben en OnNetworkSpawn: antes de Spawn() NGO avisa por consola.
+            _initialHealth = maxHealth;
             _damage = damage;
             _speed = speed;
             _points = points;
-            NetPosition.Value = transform.position;
         }
 
         public override void OnNetworkSpawn()
@@ -77,7 +78,12 @@ namespace ProtocolExecution
             _interpPosition = transform.position;
             _interpYaw = transform.eulerAngles.y;
 
-            if (IsServer) NetPosition.Value = transform.position;
+            if (IsServer)
+            {
+                MaxHealth.Value = _initialHealth;
+                Health.Value = _initialHealth;
+                NetPosition.Value = transform.position;
+            }
 
             ApplyVisualStyle();
         }
@@ -89,6 +95,7 @@ namespace ProtocolExecution
 
         private void Update()
         {
+            // [RED] La IA corre solo en el host; los clientes interpolan NetPosition.
             if (IsServer && IsAlive) UpdateServerAI();
             else if (!IsServer) UpdateClientVisual();
 

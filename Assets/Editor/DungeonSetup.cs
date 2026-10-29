@@ -38,6 +38,9 @@ public static class DungeonSetup
     [MenuItem("Protocol/Configurar sistema de mazmorra")]
     public static void Configure()
     {
+        // Configura la escena: en Play mode Unity no deja marcarla como modificada.
+        if (EditorApplication.isPlaying) return;
+
         EnsureFolder("Assets/Prefabs");
         EnsureFolder(PrefabFolder);
         EnsureFolder(DatabaseFolder);

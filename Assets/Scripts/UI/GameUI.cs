@@ -88,6 +88,12 @@ namespace ProtocolExecution
         private readonly List<Button> _upgradeButtons = new List<Button>();
 
         private Font _font;
+        private Sprite _fillSprite;
+
+        /// <summary>Una Image sin sprite ignora fillAmount: las barras quedaban siempre llenas.</summary>
+        private Sprite FillSprite => _fillSprite != null
+            ? _fillSprite
+            : _fillSprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f));
 
         private NetworkLauncher Launcher => NetworkLauncher.Instance;
         private RunController Run => RunController.Instance;
@@ -182,7 +188,9 @@ namespace ProtocolExecution
             var scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            // Se escala por altura: arriba, centro y abajo quedan siempre a la misma
+            // distancia y los textos no se pisan en ventanas anchas.
+            scaler.matchWidthOrHeight = 1f;
 
             EnsureEventSystem();
         }
@@ -592,13 +600,15 @@ namespace ProtocolExecution
                 24, new Color(1f, 0.35f, 0.75f), TextAnchor.MiddleLeft,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-630f, -450f), new Vector2(400f, 30f));
 
+            // Debajo del titulo EQUIPO (antes arrancaba a la altura de los botones de personaje).
             _lobbyPlayersText = CreateLabel(_lobbyRoot.transform, "Players", string.Empty,
                 20, new Color(0.88f, 0.96f, 1f), TextAnchor.UpperLeft,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-430f, -490f), new Vector2(400f, 300f));
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-430f, -630f), new Vector2(400f, 300f));
 
+            // Anclado arriba, debajo del boton SPAWN, para no depender del alto de la ventana.
             _lobbyInfoText = CreateLabel(_lobbyRoot.transform, "Info", string.Empty,
                 19, new Color(0.7f, 0.85f, 1f), TextAnchor.UpperLeft,
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(300f, -40f), new Vector2(560f, 220f));
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(300f, -620f), new Vector2(560f, 220f));
 
             _readyButton = CreateButton(_lobbyRoot.transform, "ReadyButton", "LISTO",
                 new Vector2(0.5f, 0f), new Vector2(340f, 70f), new Vector2(-190f, 130f), OnReadyClicked);
@@ -832,6 +842,7 @@ namespace ProtocolExecution
             RectTransform fillRect = CreateRect(_hudRoot.transform, "HealthFill",
                 new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(220f, 90f), new Vector2(394f, 28f));
             _hudHealthFill = fillRect.gameObject.AddComponent<Image>();
+            _hudHealthFill.sprite = FillSprite;
             _hudHealthFill.type = Image.Type.Filled;
             _hudHealthFill.fillMethod = Image.FillMethod.Horizontal;
             _hudHealthFill.fillAmount = 1f;
@@ -848,6 +859,7 @@ namespace ProtocolExecution
             RectTransform dashRect = CreateRect(_hudRoot.transform, "DashFill",
                 new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(220f, 55f), new Vector2(396f, 14f));
             _hudDashFill = dashRect.gameObject.AddComponent<Image>();
+            _hudDashFill.sprite = FillSprite;
             _hudDashFill.type = Image.Type.Filled;
             _hudDashFill.fillMethod = Image.FillMethod.Horizontal;
             _hudDashFill.fillAmount = 1f;
@@ -859,11 +871,11 @@ namespace ProtocolExecution
 
             _hudStatsText = CreateLabel(_hudRoot.transform, "TeamInfo", string.Empty,
                 20, new Color(1f, 0.85f, 0.2f), TextAnchor.UpperRight,
-                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-250f, -50f), new Vector2(460f, 130f));
+                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-250f, -85f), new Vector2(460f, 130f));
 
             _hudTeamText = CreateLabel(_hudRoot.transform, "TeamList", string.Empty,
                 18, new Color(0.75f, 0.9f, 1f), TextAnchor.UpperLeft,
-                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(230f, -50f), new Vector2(420f, 170f));
+                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(230f, -105f), new Vector2(420f, 170f));
 
             _hudDownedText = CreateLabel(_hudRoot.transform, "Downed", string.Empty,
                 46, new Color(1f, 0.25f, 0.35f), TextAnchor.MiddleCenter,
@@ -876,6 +888,7 @@ namespace ProtocolExecution
             RectTransform bossFill = CreateRect(_bossBarRoot.transform, "BossFill",
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(892f, 24f));
             _bossHealthFill = bossFill.gameObject.AddComponent<Image>();
+            _bossHealthFill.sprite = FillSprite;
             _bossHealthFill.type = Image.Type.Filled;
             _bossHealthFill.fillMethod = Image.FillMethod.Horizontal;
             _bossHealthFill.fillAmount = 1f;

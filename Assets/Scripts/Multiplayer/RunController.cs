@@ -19,7 +19,7 @@ namespace ProtocolExecution
     }
 
     /// <summary>
-    /// Estado autoritativo de la partida, propiedad del host.
+    /// [RED] Estado autoritativo de la partida, propiedad del host.
     ///
     /// Concentra todo lo que en §4.5 se define como "estado compartido": la
     /// semilla de la mazmorra, la dificultad, el piso, los puntos del equipo y
@@ -147,6 +147,7 @@ namespace ProtocolExecution
         /// </summary>
         public void ServerBeginRun(int difficultyIndex, bool separateSpawns, int seed)
         {
+            // [RED] La semilla viaja a todos: con ella cada peer genera la misma mazmorra.
             if (!IsServer) return;
 
             DifficultyIndex.Value = Mathf.Clamp(difficultyIndex, 0, GameData.Difficulties.Length - 1);
@@ -168,7 +169,9 @@ namespace ProtocolExecution
 
         public void ServerAddPoints(int amount)
         {
-            if (!IsServer || amount == 0) return;
+            // Con la run terminada los puntos ya se guardaron en el perfil: un disparo
+            // que llega tarde no debe cambiar el resumen.
+            if (!IsServer || amount == 0 || CurrentPhase != RunPhase.Playing) return;
             TeamPoints.Value = Mathf.Max(0, TeamPoints.Value + Mathf.RoundToInt(amount * Difficulty.pointsMul));
         }
 

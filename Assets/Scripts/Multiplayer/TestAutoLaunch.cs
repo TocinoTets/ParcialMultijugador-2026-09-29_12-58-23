@@ -23,6 +23,14 @@ namespace ProtocolExecution
             if (!_joined && NetworkLauncher.Instance != null)
             {
                 _joined = true;
+
+                // "-port N": prueba en otro puerto si el 7777 quedo ocupado.
+                string[] args = System.Environment.GetCommandLineArgs();
+                int i = System.Array.IndexOf(args, "-port");
+                if (i >= 0 && i + 1 < args.Length && ushort.TryParse(args[i + 1], out ushort port))
+                    typeof(NetworkLauncher).GetField("port", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .SetValue(NetworkLauncher.Instance, port);
+
                 Debug.Log($"[TEST] Join -> {NetworkLauncher.Instance.Join("127.0.0.1")}");
             }
 

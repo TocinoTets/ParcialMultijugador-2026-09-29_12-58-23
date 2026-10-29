@@ -153,6 +153,7 @@ namespace ProtocolExecution
                 return;
             }
 
+            // [RED] Misma semilla => misma mazmorra en host y clientes; no se replica la geometria.
             dungeonManager.GenerateFloor(seed);
 
             // La slice termina al derrotar al jefe, asi que se anula el
@@ -218,12 +219,13 @@ namespace ProtocolExecution
         /// </summary>
         private void HandleRoomPlayerEntered(DungeonSystem.RoomController room)
         {
+            // [RED] Solo el host puebla salas y spawnea enemigos (NetworkObjects).
             RunController run = Run;
             if (run == null || !run.IsServer || run.CurrentPhase != RunPhase.Playing) return;
             if (room == null || room.Node == null || !room.HasEncounter) return;
             if (room.IsCleared) return;
 
-            // La sala se cierra en cuanto entra alguien, asi que el resto del
+            // [RED] La sala se cierra en cuanto entra alguien, asi que el resto del
             // grupo se trae dentro: si no, quedarian encerrados fuera. Durante
             // el spawn repartido no se hace, porque cada uno nace en su sala.
             if (!_distributingSpawns) GatherPlayersInto(room);
@@ -423,6 +425,7 @@ namespace ProtocolExecution
         /// </summary>
         private void UpdateBossGating()
         {
+            // [RED] Corre solo en el host: el jefe aparece cuando todo el grupo vivo esta en su sala.
             if (_bossSpawnedThisRun || !_geometryBuilt || !_bossRoomKnown) return;
             if (bossPrefab == null) return;
             if (NetPlayer.All.Count == 0) return;
@@ -459,6 +462,14 @@ namespace ProtocolExecution
 
             _bossSpawnedThisRun = true;
             networkObject.Spawn(true);
+
+            // El jefe cuenta como enemigo de su sala: sin esto la sala se daba por
+            // superada al entrar (0 enemigos) y abria las puertas antes de pelear.
+            if (_rooms.TryGetValue(_bossRoomCoord, out DungeonSystem.RoomController room))
+            {
+                room.TryClaimEncounter();
+                room.RegisterEnemy(instance.AddComponent<DungeonSystem.EnemyMarker>());
+            }
         }
 
         // ---------------- Salas superadas ----------------
