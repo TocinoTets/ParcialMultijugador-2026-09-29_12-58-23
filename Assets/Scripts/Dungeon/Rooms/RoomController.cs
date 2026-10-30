@@ -240,7 +240,9 @@ namespace DungeonSystem
             PlayerEntered?.Invoke(this);
 
             // 1. Bloqueo: basta con que entre un jugador para encerrar al grupo.
-            if (!IsCleared && HasEncounter) LockDoors();
+            //    La sala de jefe es la excepcion: se cierra al aparecer el jefe
+            //    (RunBootstrapper), para que el grupo pueda reunirse dentro.
+            if (!IsCleared && HasEncounter && Node.type != RoomType.Boss) LockDoors();
         }
 
         private void OnTriggerExit(Collider other)

@@ -15,6 +15,12 @@ namespace ProtocolExecution
             new GameObject("TestAutoLaunch").AddComponent<TestAutoLaunch>();
         }
 
+        private static async void JoinOnline(string code)
+        {
+            bool ok = await NetworkLauncher.Instance.JoinOnlineAsync(code);
+            Debug.Log($"[TEST] JoinOnline {code} -> {ok} {NetworkLauncher.StatusMessage}");
+        }
+
         private float _next;
         private bool _joined;
 
@@ -31,7 +37,10 @@ namespace ProtocolExecution
                     typeof(NetworkLauncher).GetField("port", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                         .SetValue(NetworkLauncher.Instance, port);
 
-                Debug.Log($"[TEST] Join -> {NetworkLauncher.Instance.Join("127.0.0.1")}");
+                // "-code ABC123": entra a la sala online; si no, LAN a 127.0.0.1.
+                int c = System.Array.IndexOf(args, "-code");
+                if (c >= 0 && c + 1 < args.Length) JoinOnline(args[c + 1]);
+                else Debug.Log($"[TEST] Join -> {NetworkLauncher.Instance.Join("127.0.0.1")}");
             }
 
             if (Time.time < _next) return;
@@ -46,10 +55,10 @@ namespace ProtocolExecution
             Debug.Log($"[TEST] running={NetworkLauncher.Instance?.IsRunning} " +
                       $"phase={(run != null && run.IsSpawned ? run.CurrentPhase.ToString() : "-")} " +
                       $"diff={(run != null && run.IsSpawned ? run.DifficultyIndex.Value : -1)} " +
-                      $"players={NetPlayer.All.Count} enemies={NetEnemy.All.Count} " +
+                      $"players={NetPlayer.All.Count} enemies={NetEnemy.All.Count} pickups={FindObjectsByType<NetPickup>(FindObjectsSortMode.None).Length} " +
                       $"cleared={(run != null && run.IsSpawned ? run.ClearedRooms.Count : -1)} " +
                       $"local[{local}] meta={MetaProgression.Points} " +
-                      $"reject='{NetworkLauncher.LastRejectReason}'");
+                      $"reject='{NetworkLauncher.LastRejectReason}' code={NetworkLauncher.Instance?.SessionCode} status='{NetworkLauncher.StatusMessage}'");
         }
     }
 }

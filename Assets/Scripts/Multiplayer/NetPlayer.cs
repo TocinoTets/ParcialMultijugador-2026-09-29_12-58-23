@@ -12,11 +12,12 @@ namespace ProtocolExecution
     /// <summary>
     /// Jugador de red.
     ///
-    /// [RED] Movimiento con autoridad del dueno: cada jugador se mueve en su
-    /// propia maquina y publica su posicion en <see cref="NetPosition"/>. El
-    /// host NO re-simula ni corrige ese movimiento (no se chequean los paquetes
-    /// de input), asi no hay rollbacks que se sientan como lag. Los demas
-    /// peers interpolan hacia la ultima posicion recibida.
+    /// [RED] Movimiento con autoridad del dueno (prediccion local, GDD 4.5): cada
+    /// jugador se mueve en su propia maquina y publica su posicion en
+    /// <see cref="NetPosition"/>. El host no re-simula cada input, asi no hay
+    /// rollbacks que se sientan como lag; solo reconcilia cuando la posicion es
+    /// imposible (<see cref="ServerValidatePosition"/>). Los demas peers
+    /// interpolan hacia la ultima posicion recibida.
     ///
     /// Lo que si decide el host: disparos (<see cref="RequestFireServerRpc"/>),
     /// dano, vida, caidas y teletransportes. El juego es cooperativo, asi que
@@ -36,6 +37,10 @@ namespace ProtocolExecution
         [SerializeField] private float radius = 0.45f;
         [SerializeField] private float dashDistance = 4.5f;
         [SerializeField] private LayerMask wallMask = ~0;
+
+        [Header("Reconciliacion suave (GDD 4.5)")]
+        [Tooltip("Metros extra que el host tolera antes de corregir una posicion (latencia, redondeos).")]
+        [SerializeField] private float reconcileSlack = 1.5f;
 
         [Header("Combate")]
         [SerializeField] private float downedDuration = 10f;
@@ -87,6 +92,10 @@ namespace ProtocolExecution
         public readonly NetworkVariable<int> Deaths = new NetworkVariable<int>(
             0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
+        /// <summary>Hora del servidor hasta la que dura el arma sobrecargada (objeto para recoger).</summary>
+        public readonly NetworkVariable<double> OverchargeUntil = new NetworkVariable<double>(
+            0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
         /// <summary>[RED] Posicion que publica el dueno cada frame; NGO la envia a la tasa de tick (30 Hz).</summary>
         public readonly NetworkVariable<Vector3> NetPosition = new NetworkVariable<Vector3>(
             Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -104,12 +113,17 @@ namespace ProtocolExecution
         private float _interpYaw;
         private float _teleportHoldUntil;
 
+        // Reconciliacion suave (solo en el host, sobre jugadores ajenos).
+        private Vector3 _serverAccepted;
+        private float _serverAcceptedTime;
+        private float _serverIgnoreUntil;
+
         public bool IsAlive => !IsDowned.Value;
         public string DisplayName => PlayerName.Value.ToString();
         public CharacterDef Character => GameData.GetCharacter(CharacterIndex.Value);
 
         private float Speed => Character.moveSpeed * (1f + BonusSpeedPercent.Value);
-        private float Damage => Character.damage * (1f + BonusDamagePercent.Value);
+        private float Damage => Character.damage * (1f + BonusDamagePercent.Value) * (OverchargeRemaining > 0f ? 1.5f : 1f);
 
         private void Awake()
         {
@@ -143,11 +157,19 @@ namespace ProtocolExecution
 
                 PublishPosition(transform.eulerAngles.y);
             }
+
+            if (IsServer && !IsOwner)
+            {
+                _serverAccepted = transform.position;
+                _serverAcceptedTime = Time.time;
+                NetPosition.OnValueChanged += ServerValidatePosition;
+            }
         }
 
         public override void OnNetworkDespawn()
         {
             All.Remove(this);
+            NetPosition.OnValueChanged -= ServerValidatePosition;
         }
 
         // ---------------- Ciclo principal ----------------
@@ -177,7 +199,7 @@ namespace ProtocolExecution
             transform.position = newPosition;
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
-            // [RED] Se manda la posicion tal cual: nadie la re-simula ni la corrige.
+            // [RED] Se manda la posicion tal cual; el host solo la corrige si es imposible.
             PublishPosition(yaw);
 
             if (_dashCooldownRemaining > 0f) _dashCooldownRemaining -= Time.deltaTime;
@@ -240,6 +262,59 @@ namespace ProtocolExecution
         {
             NetPosition.Value = transform.position;
             NetYaw.Value = yaw;
+        }
+
+        // ---------------- Host: reconciliacion suave (GDD 4.5) ----------------
+
+        /// <summary>
+        /// [RED] Reconciliacion suave: el host revisa cada posicion que publica un
+        /// cliente y la corrige SOLO si es imposible (mas lejos de lo que se puede
+        /// mover en ese tiempo, o atravesando una pared o una puerta cerrada). En
+        /// juego normal nunca corrige, asi que no agrega lag.
+        /// </summary>
+        private void ServerValidatePosition(Vector3 previous, Vector3 next)
+        {
+            if (Time.time < _serverIgnoreUntil) return;
+
+            // Tope de 0.5 s: quedarse quieto no "acumula" distancia permitida.
+            float elapsed = Mathf.Clamp(Time.time - _serverAcceptedTime, 1f / 30f, 0.5f);
+            float allowed = Speed * elapsed * 1.25f + dashDistance + reconcileSlack;
+
+            Vector3 delta = next - _serverAccepted;
+            delta.y = 0f;
+
+            if (delta.magnitude <= allowed && !PathBlocked(_serverAccepted, next))
+            {
+                _serverAccepted = next;
+                _serverAcceptedTime = Time.time;
+                return;
+            }
+
+            // Los paquetes viejos que sigan en camino no vuelven a disparar la correccion.
+            _serverIgnoreUntil = Time.time + 0.3f;
+            CorrectPositionRpc(_serverAccepted);
+        }
+
+        /// <summary>True si entre dos posiciones hay una pared o puerta cerrada en el host.</summary>
+        private bool PathBlocked(Vector3 from, Vector3 to)
+        {
+            Vector3 d = to - from;
+            d.y = 0f;
+            float distance = d.magnitude;
+            if (distance < 0.05f) return false;
+
+            // Radio algo menor y 0.3 m de tolerancia: rozar una pared no cuenta como atravesarla.
+            return Physics.SphereCast(from + Vector3.up * 0.9f, radius * 0.8f, d / distance, out RaycastHit hit,
+                       distance, wallMask, QueryTriggerInteraction.Ignore)
+                   && hit.distance < distance - 0.3f;
+        }
+
+        /// <summary>[RED] El host devuelve al dueno a la ultima posicion valida.</summary>
+        [Rpc(SendTo.Owner)]
+        private void CorrectPositionRpc(Vector3 position)
+        {
+            transform.position = position;
+            PublishPosition(transform.eulerAngles.y);
         }
 
         // ---------------- Jugadores ajenos: interpolacion ----------------
@@ -362,6 +437,18 @@ namespace ProtocolExecution
             Health.Value = Mathf.Min(MaxHealth.Value, Health.Value + amount);
         }
 
+        /// <summary>Objeto "arma sobrecargada": mas dano hasta OverchargeUntil (hora del servidor).</summary>
+        public void ServerGrantOvercharge(float seconds)
+        {
+            if (!IsServer) return;
+            OverchargeUntil.Value = NetworkManager.ServerTime.Time + seconds;
+        }
+
+        /// <summary>Segundos de sobrecarga que quedan, usando la hora del servidor (igual en todos).</summary>
+        public float OverchargeRemaining => IsSpawned
+            ? Mathf.Max(0f, (float)(OverchargeUntil.Value - NetworkManager.ServerTime.Time))
+            : 0f;
+
         public void ServerResetForRun()
         {
             if (!IsServer) return;
@@ -372,6 +459,7 @@ namespace ProtocolExecution
             IsDowned.Value = false;
             Kills.Value = 0;
             Deaths.Value = 0;
+            OverchargeUntil.Value = 0;
             _downedTimer = 0f;
         }
 
@@ -447,6 +535,10 @@ namespace ProtocolExecution
             if (!IsServer) return;
 
             // [RED] La posicion es del dueno, asi que el host le pide que se mueva.
+            // El salto es legitimo: se acepta como nueva referencia de la reconciliacion.
+            _serverAccepted = position;
+            _serverAcceptedTime = Time.time;
+            _serverIgnoreUntil = Time.time + 0.5f;
             TeleportClientRpc(position, yaw);
         }
 

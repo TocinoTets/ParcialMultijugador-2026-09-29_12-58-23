@@ -221,7 +221,7 @@ namespace ProtocolExecution
             RunController run = RunController.Instance;
             if (run != null)
             {
-                run.ServerOnEnemyKilled(_points);
+                run.ServerOnEnemyKilled(_points, transform.position);
 
                 NetPlayer killer = FindPlayer(_lastDamagerClientId);
                 if (killer != null) killer.ServerRegisterKill();

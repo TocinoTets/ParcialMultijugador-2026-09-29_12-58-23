@@ -35,7 +35,7 @@ namespace ProtocolExecution
         // ---------------- Estado de la UI ----------------
 
         private Screen? _override;
-        private string _addressInput = "127.0.0.1";
+        private string _addressInput = string.Empty;
         private int _pendingCharacter;
         private int _pendingDifficulty = 1;
         private bool _pendingSeparateSpawns;
@@ -56,6 +56,7 @@ namespace ProtocolExecution
         private InputField _addressField;
         private Text _menuStatusText;
 
+        private Text _lobbyTitleText;
         private Text _lobbyPlayersText;
         private Text _lobbyInfoText;
         private Text _lobbyStartHintText;
@@ -65,6 +66,12 @@ namespace ProtocolExecution
         private Button _readyButton;
         private Button _startButton;
         private Button _separateSpawnsButton;
+
+        // GDD 4.3: el host puede expulsar. Dos botones por pantalla (lobby y HUD),
+        // uno por cada jugador que no es el host (maximo 3 en total).
+        private Button[] _lobbyKickButtons;
+        private Button[] _hudKickButtons;
+        private readonly ulong[] _kickTargets = new ulong[2];
 
         private Text _hudPlayerText;
         private Text _hudStatsText;
@@ -323,12 +330,16 @@ namespace ProtocolExecution
                 22, new Color(1f, 0.35f, 0.75f), TextAnchor.MiddleCenter,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -205f), new Vector2(1400f, 40f));
 
-            CreateButton(_menuRoot.transform, "HostButton", "CREAR PARTIDA (HOST)", new Vector2(0.5f, 0.5f),
-                new Vector2(460f, 70f), new Vector2(0f, 110f), OnHostClicked);
+            // Online: sala con codigo via Relay + Lobby. LAN: IP directa, sin servicios.
+            CreateButton(_menuRoot.transform, "HostButton", "CREAR ONLINE", new Vector2(0.5f, 0.5f),
+                new Vector2(300f, 70f), new Vector2(-160f, 110f), OnHostClicked);
 
-            CreateLabel(_menuRoot.transform, "AddressLabel", "DIRECCION DEL HOST (LAN)",
+            CreateButton(_menuRoot.transform, "HostLanButton", "CREAR EN LAN", new Vector2(0.5f, 0.5f),
+                new Vector2(300f, 70f), new Vector2(160f, 110f), OnHostLanClicked);
+
+            CreateLabel(_menuRoot.transform, "AddressLabel", "CODIGO DE SALA (ONLINE)  o  IP DEL HOST (LAN)",
                 18, new Color(0.6f, 0.75f, 0.9f), TextAnchor.MiddleCenter,
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 30f), new Vector2(460f, 30f));
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 30f), new Vector2(620f, 30f));
 
             CreateInputField(_menuRoot.transform, "AddressField", new Vector2(0.5f, 0.5f),
                 new Vector2(460f, 60f), new Vector2(0f, -25f), _addressInput, value => _addressInput = value);
@@ -365,7 +376,7 @@ namespace ProtocolExecution
                 TextAnchor.MiddleLeft, Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-20f, -10f));
             textComponent.supportRichText = false;
 
-            Text placeholder = CreateLabel(rect, "Placeholder", "127.0.0.1", 22, new Color(0.4f, 0.5f, 0.6f),
+            Text placeholder = CreateLabel(rect, "Placeholder", "ej. ABC123  o  127.0.0.1", 22, new Color(0.4f, 0.5f, 0.6f),
                 TextAnchor.MiddleLeft, Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-20f, -10f));
             placeholder.fontStyle = FontStyle.Italic;
 
@@ -384,15 +395,25 @@ namespace ProtocolExecution
         {
             if (_menuStatusText == null) return;
 
-            string message = NetworkLauncher.LastRejectReason;
+            string message = NetworkLauncher.StatusMessage;
+            if (string.IsNullOrEmpty(message)) message = NetworkLauncher.LastRejectReason;
 
             if (string.IsNullOrEmpty(message) && Launcher != null && !Launcher.IsRunning)
-                message = "Sin conexion. Crea una partida o unite a la direccion del host.";
+                message = "Sin conexion. Crea una partida o unite con el codigo de sala (o la IP en LAN).";
 
             _menuStatusText.text = message;
         }
 
-        private void OnHostClicked()
+        private async void OnHostClicked()
+        {
+            NetworkLauncher launcher = Launcher;
+            if (launcher == null) return;
+
+            _override = null;
+            await launcher.HostOnlineAsync(); // el error, si lo hay, queda en NetworkLauncher.StatusMessage
+        }
+
+        private void OnHostLanClicked()
         {
             NetworkLauncher launcher = Launcher;
             if (launcher == null) return;
@@ -401,15 +422,23 @@ namespace ProtocolExecution
             if (!launcher.Host()) _statusMessage = "No se pudo iniciar el host.";
         }
 
-        private void OnJoinClicked()
+        private async void OnJoinClicked()
         {
             NetworkLauncher launcher = Launcher;
             if (launcher == null) return;
 
             if (_addressField != null) _addressInput = _addressField.text;
-
             _override = null;
-            if (!launcher.Join(_addressInput)) _statusMessage = "No se pudo iniciar el cliente.";
+
+            // Una IP lleva puntos (o queda vacia => 127.0.0.1); cualquier otra cosa es un codigo de sala.
+            string input = _addressInput.Trim();
+            if (input.Length == 0 || input.Contains("."))
+            {
+                if (!launcher.Join(input)) _statusMessage = "No se pudo iniciar el cliente.";
+                return;
+            }
+
+            await launcher.JoinOnlineAsync(input);
         }
 
         private void QuitGame()
@@ -558,7 +587,7 @@ namespace ProtocolExecution
             CreatePanel(_lobbyRoot.transform, "Background", new Color(0.02f, 0.03f, 0.06f, 1f),
                 Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
-            CreateLabel(_lobbyRoot.transform, "Title", "SALA DE ESPERA",
+            _lobbyTitleText = CreateLabel(_lobbyRoot.transform, "Title", "SALA DE ESPERA",
                 44, new Color(0.30f, 0.95f, 1f), TextAnchor.MiddleCenter,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -70f), new Vector2(1200f, 55f));
 
@@ -604,6 +633,9 @@ namespace ProtocolExecution
             _lobbyPlayersText = CreateLabel(_lobbyRoot.transform, "Players", string.Empty,
                 20, new Color(0.88f, 0.96f, 1f), TextAnchor.UpperLeft,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-430f, -630f), new Vector2(400f, 300f));
+
+            _lobbyKickButtons = CreateKickButtons(_lobbyRoot.transform, new Vector2(0.5f, 1f),
+                new Vector2(-430f, -650f), new Vector2(360f, 44f));
 
             // Anclado arriba, debajo del boton SPAWN, para no depender del alto de la ventana.
             _lobbyInfoText = CreateLabel(_lobbyRoot.transform, "Info", string.Empty,
@@ -719,6 +751,11 @@ namespace ProtocolExecution
             builder.AppendLine($"  {connected}/{MaxPlayers} jugadores");
 
             _lobbyPlayersText.text = builder.ToString();
+            RefreshKickButtons(_lobbyKickButtons);
+
+            // El host dicta este codigo a sus amigos para que entren por Relay.
+            string code = launcher != null ? launcher.SessionCode : string.Empty;
+            _lobbyTitleText.text = string.IsNullOrEmpty(code) ? "SALA DE ESPERA  (LAN)" : $"SALA DE ESPERA  //  CODIGO: {code}";
 
             // --- Info del modo ---
             DifficultyDef diff = GameData.GetDifficulty(_pendingDifficulty);
@@ -903,6 +940,51 @@ namespace ProtocolExecution
             CreateButton(_hudRoot.transform, "LeaveRunButton", "ABANDONAR PARTIDA",
                 new Vector2(1f, 0f), new Vector2(280f, 46f), new Vector2(-170f, 40f), OnLeaveClicked,
                 new Color(0.25f, 0.06f, 0.09f, 0.95f));
+
+            // Debajo de la lista del equipo, arriba a la izquierda.
+            _hudKickButtons = CreateKickButtons(_hudRoot.transform, new Vector2(0f, 1f),
+                new Vector2(180f, -215f), new Vector2(300f, 38f));
+        }
+
+        // ---------------- Expulsar (GDD 4.3) ----------------
+
+        private Button[] CreateKickButtons(Transform parent, Vector2 anchor, Vector2 firstPosition, Vector2 size)
+        {
+            var buttons = new Button[_kickTargets.Length];
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                int slot = i;
+                buttons[i] = CreateButton(parent, $"Kick_{i}", "EXPULSAR", anchor, size,
+                    firstPosition + new Vector2(0f, -i * (size.y + 8f)), () => OnKickClicked(slot),
+                    new Color(0.25f, 0.06f, 0.09f, 0.95f));
+                buttons[i].gameObject.SetActive(false);
+            }
+            return buttons;
+        }
+
+        /// <summary>Solo el host ve un boton por cada jugador ajeno conectado.</summary>
+        private void RefreshKickButtons(Button[] buttons)
+        {
+            bool isHost = Launcher != null && Launcher.IsHost;
+            int slot = 0;
+
+            for (int i = 0; i < NetPlayer.All.Count && slot < buttons.Length; i++)
+            {
+                NetPlayer player = NetPlayer.All[i];
+                if (!isHost || player == null || player.IsOwner) continue;
+
+                _kickTargets[slot] = player.OwnerClientId;
+                SetButtonLabel(buttons[slot], $"EXPULSAR {player.DisplayName}");
+                buttons[slot].gameObject.SetActive(true);
+                slot++;
+            }
+
+            for (; slot < buttons.Length; slot++) buttons[slot].gameObject.SetActive(false);
+        }
+
+        private void OnKickClicked(int slot)
+        {
+            if (Launcher != null) Launcher.Kick(_kickTargets[slot]);
         }
 
         private void RefreshHud()
@@ -960,6 +1042,8 @@ namespace ProtocolExecution
                 builder.AppendLine($"{(player.IsOwner ? "> " : "  ")}{player.DisplayName}  {state}  bajas {player.Kills.Value}");
             }
             _hudTeamText.text = builder.ToString();
+
+            RefreshKickButtons(_hudKickButtons);
         }
 
         // ---------------- Pantalla: resultados ----------------
