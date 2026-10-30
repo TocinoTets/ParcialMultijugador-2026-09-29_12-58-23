@@ -46,6 +46,7 @@ namespace ProtocolExecution
         private bool _bossSpawnedThisRun;
         private bool _geometryBuilt;
         private bool _distributingSpawns;
+        private bool _bossDoorsLocked;
 
         private RunController Run => RunController.Instance;
 
@@ -85,6 +86,16 @@ namespace ProtocolExecution
             {
                 UpdateBossGating();
             }
+
+            // [RED] GDD 4.2: la sala del jefe no encierra al primero que entra; se cierra en
+            // todos los peers recien cuando aparece el jefe (BossSpawned), con el grupo ya reunido.
+            if (run == _subscribedRun && run.CurrentPhase == RunPhase.Playing && run.BossSpawned.Value
+                && !_bossDoorsLocked && _bossRoomKnown
+                && _rooms.TryGetValue(_bossRoomCoord, out DungeonSystem.RoomController bossRoom) && !bossRoom.IsCleared)
+            {
+                bossRoom.LockDoors();
+                _bossDoorsLocked = true;
+            }
         }
 
         /// <summary>Instancia de RunController a la que se esta suscrito, o null.</summary>
@@ -109,6 +120,7 @@ namespace ProtocolExecution
             _rooms.Clear();
             _bossRoomKnown = false;
             _bossSpawnedThisRun = false;
+            _bossDoorsLocked = false;
             _geometryBuilt = false;
         }
 
@@ -122,6 +134,7 @@ namespace ProtocolExecution
             if (phase == RunPhase.Playing)
             {
                 _bossSpawnedThisRun = false;
+                _bossDoorsLocked = false;
 
                 BuildFloorGeometry(run.Seed.Value);
 
@@ -225,14 +238,14 @@ namespace ProtocolExecution
             if (room == null || room.Node == null || !room.HasEncounter) return;
             if (room.IsCleared) return;
 
-            // [RED] La sala se cierra en cuanto entra alguien, asi que el resto del
-            // grupo se trae dentro: si no, quedarian encerrados fuera. Durante
-            // el spawn repartido no se hace, porque cada uno nace en su sala.
-            if (!_distributingSpawns) GatherPlayersInto(room);
-
-            // La sala de jefe la sigue poblando UpdateBossGating, que espera a
-            // que todo el grupo se haya reunido dentro.
+            // La sala de jefe no se cierra al entrar ni trae a nadie: la puebla
+            // UpdateBossGating cuando todo el grupo llego caminando (GDD 4.2).
             if (room.Node.type == DungeonSystem.RoomType.Boss) return;
+
+            // [RED] Spawn en la misma sala: una sala normal se cierra en cuanto entra
+            // alguien, asi que el resto del grupo se trae dentro. Con spawn separado
+            // no: el GDD 4.2 quiere exploracion en paralelo, cada uno en su sala.
+            if (!_distributingSpawns && !run.SeparateSpawns.Value) GatherPlayersInto(room);
 
             if (!room.TryClaimEncounter()) return;
 

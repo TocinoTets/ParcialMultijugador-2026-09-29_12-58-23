@@ -1,7 +1,11 @@
 using System;
 using System.Text;
+using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Authentication;
+using Unity.Services.Core;
+using Unity.Services.Multiplayer;
 using UnityEngine;
 
 namespace ProtocolExecution
@@ -11,6 +15,8 @@ namespace ProtocolExecution
     ///
     /// INDICE DEL MULTIJUGADOR (buscar "[RED]" con Ctrl+F para ir a cada punto):
     ///  - Crear / unirse / aprobar conexiones ........ NetworkLauncher (este archivo)
+    ///  - Infraestructura: Authentication + Relay +
+    ///    Lobby (sala con codigo) .................... NetworkLauncher (HostOnlineAsync / JoinOnlineAsync)
     ///  - Estado compartido de la partida y semilla .. RunController
     ///  - Movimiento: cada jugador manda su posicion
     ///    directo, sin chequeo de paquetes (menos lag) NetPlayer (UpdateOwnerInput)
@@ -22,8 +28,14 @@ namespace ProtocolExecution
     ///  - Salas superadas (puertas y piso violeta) ... RoomController + RunController.ClearedRooms
     ///
     /// Un jugador arranca como host (servidor + cliente) y los demas se
-    /// conectan a su direccion. La autoridad del estado compartido
-    /// (mazmorra, enemigos, jefe, vida y puntos) vive en el host.
+    /// conectan a el. La autoridad del estado compartido (mazmorra, enemigos,
+    /// jefe, vida y puntos) vive en el host.
+    ///
+    /// Dos formas de conectarse:
+    ///  - Online (Unity Gaming Services, paquete Multiplayer Services): el host
+    ///    crea una sesion con Relay y los demas entran con el codigo de sala.
+    ///    Relay hace de puente, asi que nadie abre puertos ni comparte su IP.
+    ///  - LAN: IP directa al puerto 7777, sin servicios (para jugar sin internet).
     ///
     /// Que cubre esta slice de §4.3:
     ///  - Limite duro de 3 jugadores por partida.
@@ -31,8 +43,7 @@ namespace ProtocolExecution
     ///  - Verificacion de version de cliente antes de admitir la conexion (§7).
     ///
     /// Que NO cubre todavia (y por que):
-    ///  - Codigo de sala / lobbies publicos: requiere el servicio Relay + Lobby
-    ///    (Unity Gaming Services). Hoy la union es por IP directa en LAN.
+    ///  - Lobbies publicos con buscador: hoy solo se entra por codigo.
     ///  - Reputacion, reportes y silenciado: necesitan el backend centralizado.
     ///  - Host migration: NGO no lo soporta de forma nativa; es una feature
     ///    propia y no esta implementada.
@@ -66,6 +77,17 @@ namespace ProtocolExecution
 
         /// <summary>Ultimo motivo de rechazo informado por el host, para mostrarlo en UI.</summary>
         public static string LastRejectReason { get; private set; } = string.Empty;
+
+        /// <summary>Progreso o error de la conexion online, para mostrarlo en el menu.</summary>
+        public static string StatusMessage { get; private set; } = string.Empty;
+
+        /// <summary>True mientras se crea o busca una sala online (las llamadas tardan).</summary>
+        public bool IsBusy { get; private set; }
+
+        private ISession _session;
+
+        /// <summary>Codigo que el host comparte para que los demas entren. Vacio en LAN.</summary>
+        public string SessionCode => _session?.Code ?? string.Empty;
 
         public event Action SessionChanged;
 
@@ -158,6 +180,93 @@ namespace ProtocolExecution
 
         // ---------------- Arranque / union ----------------
 
+        // ---------------- Online: Unity Gaming Services ----------------
+
+        /// <summary>
+        /// [RED] Infraestructura: inicia Unity Services y entra con una cuenta
+        /// anonima (Authentication). Relay y Lobby exigen un jugador identificado.
+        /// </summary>
+        private static async Task EnsureSignedInAsync()
+        {
+            if (UnityServices.State == ServicesInitializationState.Uninitialized)
+            {
+                // shortcut: perfil al azar para poder abrir varias instancias en la misma PC
+                // (cada una es otro jugador anonimo); un juego real guardaria el perfil.
+                var options = new InitializationOptions().SetProfile("p" + UnityEngine.Random.Range(0, 1000000));
+                await UnityServices.InitializeAsync(options);
+            }
+
+            if (!AuthenticationService.Instance.IsSignedIn)
+                await AuthenticationService.Instance.SignInAnonymouslyAsync();
+        }
+
+        /// <summary>
+        /// [RED] Crea la sala online: una sesion de Multiplayer Services con Relay.
+        /// El paquete reserva el Relay, crea el Lobby con su codigo y arranca
+        /// Netcode como host; la aprobacion de conexion de este archivo sigue valiendo.
+        /// </summary>
+        public async Task<bool> HostOnlineAsync()
+        {
+            if (networkManager == null || IsBusy || IsRunning) return false;
+
+            IsBusy = true;
+            StatusMessage = "Creando sala online...";
+            try
+            {
+                await EnsureSignedInAsync();
+                networkManager.NetworkConfig.ConnectionData = Encoding.UTF8.GetBytes(Application.version);
+
+                // Privada: solo se entra con el codigo. El cupo coincide con el de ApprovalCheck.
+                var options = new SessionOptions { MaxPlayers = GameData.MaxPlayers, IsPrivate = true }
+                    .WithRelayNetwork();
+
+                _session = await MultiplayerService.Instance.CreateSessionAsync(options);
+                StatusMessage = string.Empty;
+                return true;
+            }
+            catch (Exception e)
+            {
+                StatusMessage = $"No se pudo crear la sala online: {e.Message}";
+                return false;
+            }
+            finally
+            {
+                IsBusy = false;
+                SessionChanged?.Invoke();
+            }
+        }
+
+        /// <summary>[RED] Entra a una sala online con el codigo que paso el host (Lobby + Relay).</summary>
+        public async Task<bool> JoinOnlineAsync(string code)
+        {
+            if (networkManager == null || IsBusy || IsRunning) return false;
+
+            IsBusy = true;
+            StatusMessage = "Buscando la sala...";
+            LastRejectReason = string.Empty;
+            try
+            {
+                await EnsureSignedInAsync();
+                networkManager.NetworkConfig.ConnectionData = Encoding.UTF8.GetBytes(Application.version);
+
+                _session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code.Trim().ToUpperInvariant());
+                StatusMessage = string.Empty;
+                return true;
+            }
+            catch (Exception e)
+            {
+                StatusMessage = $"No se pudo entrar a la sala: {e.Message}";
+                return false;
+            }
+            finally
+            {
+                IsBusy = false;
+                SessionChanged?.Invoke();
+            }
+        }
+
+        // ---------------- LAN: IP directa ----------------
+
         /// <summary>[RED] Arranca como host (servidor + jugador) en el puerto configurado.</summary>
         public bool Host()
         {
@@ -189,6 +298,13 @@ namespace ProtocolExecution
         public void Shutdown()
         {
             if (networkManager == null) return;
+
+            // Salir de la sesion online libera el Lobby y el Relay (si el host sale, la sala se cierra).
+            if (_session != null)
+            {
+                _ = _session.LeaveAsync();
+                _session = null;
+            }
 
             networkManager.Shutdown();
 
@@ -242,16 +358,29 @@ namespace ProtocolExecution
                 LastRejectReason = networkManager.DisconnectReason;
             }
 
-            // Si se cae el host, los clientes no tienen a quien pedir autoridad:
-            // se cierra la sesion en vez de dejar la partida en un estado invalido.
-            if (networkManager != null && networkManager.IsClient && !networkManager.IsServer
-                && clientId == NetworkManager.ServerClientId)
+            // Del lado cliente: se cayo el host (no hay host migration), el host nos
+            // expulso o rechazo la conexion. En los tres casos se cierra la sesion,
+            // asi tambien se sale del Lobby y se vuelve al menu con el motivo.
+            if (networkManager != null && !networkManager.IsServer
+                && (clientId == NetworkManager.ServerClientId || clientId == networkManager.LocalClientId
+                    || !networkManager.IsListening))
             {
-                Debug.LogWarning("[NetworkLauncher] El host se desconecto. No hay host migration implementada todavia; se cierra la sesion.");
                 Shutdown();
             }
 
             SessionChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// [RED] GDD 4.3: el host expulsa a un jugador. NGO lo desconecta con un motivo
+        /// que el expulsado ve en el menu; al cerrar su sesion tambien sale del Lobby.
+        /// </summary>
+        public void Kick(ulong clientId)
+        {
+            if (networkManager == null || !networkManager.IsServer) return;
+            if (clientId == NetworkManager.ServerClientId) return;
+
+            networkManager.DisconnectClient(clientId, "El host te expulso de la partida.");
         }
     }
 }

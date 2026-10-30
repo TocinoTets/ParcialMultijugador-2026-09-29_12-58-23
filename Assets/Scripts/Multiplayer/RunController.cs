@@ -37,6 +37,11 @@ namespace ProtocolExecution
         [SerializeField] private int enemiesBasePerRoom = 3;
         [SerializeField] private int bossBaseHealth = 900;
 
+        [Header("Objetos para recoger (GDD 2)")]
+        [SerializeField] private GameObject pickupPrefab;
+        [SerializeField, Range(0f, 1f)] private float pickupDropChance = 0.35f;
+        [SerializeField, Range(0f, 1f)] private float healShareOfDrops = 0.6f;
+
         public readonly NetworkVariable<int> Seed = new NetworkVariable<int>(
             0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
@@ -249,11 +254,30 @@ namespace ProtocolExecution
             return Mathf.Clamp(Mathf.RoundToInt(scaled), 1, 10);
         }
 
-        public void ServerOnEnemyKilled(int points)
+        public void ServerOnEnemyKilled(int points, Vector3 position)
         {
             if (!IsServer) return;
             _enemyKillStreak++;
             ServerAddPoints(points);
+            ServerMaybeDropPickup(position);
+        }
+
+        /// <summary>[RED] El host decide si el enemigo suelta algo y que; el objeto se replica a todos.</summary>
+        private void ServerMaybeDropPickup(Vector3 position)
+        {
+            if (pickupPrefab == null || CurrentPhase != RunPhase.Playing) return;
+            if (UnityEngine.Random.value > pickupDropChance) return;
+
+            GameObject instance = Instantiate(pickupPrefab, new Vector3(position.x, 0.6f, position.z), Quaternion.identity);
+            var pickup = instance.GetComponent<NetPickup>();
+            if (pickup == null)
+            {
+                Destroy(instance);
+                return;
+            }
+
+            pickup.ServerSetKind(UnityEngine.Random.value < healShareOfDrops ? NetPickup.Kind.Heal : NetPickup.Kind.Overcharge);
+            instance.GetComponent<NetworkObject>().Spawn(true);
         }
 
         public int EnemyKillStreak => _enemyKillStreak;
