@@ -85,7 +85,7 @@ namespace ProtocolExecution
                 displayName = "VEX-01",
                 description = "Androide balanceado. Cadencia media, alcance estable.",
                 maxHealth = 100f,
-                moveSpeed = 6.5f,
+                moveSpeed = 7.5f,
                 damage = 12f,
                 fireRate = 3.5f,
                 projectileSpeed = 22f,
